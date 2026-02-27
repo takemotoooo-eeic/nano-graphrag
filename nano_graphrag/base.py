@@ -1,6 +1,6 @@
+import os
 from dataclasses import dataclass, field
 from typing import TypedDict, Union, Literal, Generic, TypeVar, List
-
 import numpy as np
 
 from ._utils import EmbeddingFunc
@@ -54,6 +54,23 @@ class CommunitySchema(SingleCommunitySchema):
 
 
 T = TypeVar("T")
+
+
+@dataclass
+class BaseParser:
+    """Base class for file-to-text parsers.
+
+    Subclasses should set `supported_extensions` and implement `parse`.
+    """
+
+    supported_extensions: set[str] = field(default_factory=set)
+
+    def can_handle(self, path: str) -> bool:
+        _, ext = os.path.splitext(path)
+        return ext.lower() in self.supported_extensions
+
+    def parse(self, path: str) -> str:
+        raise NotImplementedError
 
 
 @dataclass

@@ -12,3 +12,8 @@ neo4j
 aioboto3
 dotenv
 qdrant_client
+python-docx
+pypdf
+openpyxl
+azure-ai-formrecognizer
+azure-ai-documentintelligence

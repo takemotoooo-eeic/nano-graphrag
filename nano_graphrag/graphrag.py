@@ -26,6 +26,7 @@ from ._op import (
     global_query,
     naive_query,
 )
+from ._parser import parse_file
 from ._storage import (
     JsonKVStorage,
     NanoVectorDBStorage,
@@ -46,6 +47,7 @@ from .base import (
     BaseVectorStorage,
     StorageNameSpace,
     QueryParam,
+    BaseParser,
 )
 
 
@@ -225,9 +227,13 @@ class GraphRAG:
 
 
 
-    def insert(self, string_or_strings):
+    def insert(
+        self,
+        string_or_strings,
+        parsers: Optional[List[BaseParser]] = None,
+    ):
         loop = always_get_an_event_loop()
-        return loop.run_until_complete(self.ainsert(string_or_strings))
+        return loop.run_until_complete(self.ainsert(string_or_strings, parsers=parsers))
 
     def query(self, query: str, param: QueryParam = QueryParam()):
         loop = always_get_an_event_loop()
@@ -274,15 +280,52 @@ class GraphRAG:
         await self._query_done()
         return response
 
-    async def ainsert(self, string_or_strings):
+    def _normalize_inputs_to_texts(
+        self,
+        string_or_strings,
+        parsers: Optional[List[BaseParser]] = None,
+    ) -> list[str]:
+        """Normalize inputs (strings or paths) into a list of text contents.
+
+        - If an element is a string and corresponds to an existing file path,
+          it will be parsed via the file parsers (docx/pdf/xlsx/...) or read
+          as plain text.
+        - Otherwise the element is treated as already-parsed text.
+        """
+
+        if isinstance(string_or_strings, str):
+            items = [string_or_strings]
+        elif isinstance(string_or_strings, list):
+            items = string_or_strings
+        else:
+            raise TypeError(
+                "insert/ainsert only support `str` or `list[str]` as input."
+            )
+
+        texts: list[str] = []
+        for item in items:
+            if not isinstance(item, str):
+                raise TypeError(
+                    "insert/ainsert only support `str` or `list[str]` as input."
+                )
+            if os.path.exists(item):
+                texts.append(parse_file(item, parsers=parsers))
+            else:
+                texts.append(item)
+        return texts
+
+    async def ainsert(
+        self,
+        string_or_strings,
+        parsers: Optional[List[BaseParser]] = None,
+    ):
         await self._insert_start()
         try:
-            if isinstance(string_or_strings, str):
-                string_or_strings = [string_or_strings]
+            texts = self._normalize_inputs_to_texts(string_or_strings, parsers=parsers)
             # ---------- new docs
             new_docs = {
                 compute_mdhash_id(c.strip(), prefix="doc-"): {"content": c.strip()}
-                for c in string_or_strings
+                for c in texts
             }
             _add_doc_keys = await self.full_docs.filter_keys(list(new_docs.keys()))
             new_docs = {k: v for k, v in new_docs.items() if k in _add_doc_keys}
