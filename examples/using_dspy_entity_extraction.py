@@ -6,7 +6,7 @@ import numpy as np
 import dspy
 from sentence_transformers import SentenceTransformer
 from nano_graphrag import GraphRAG, QueryParam
-from nano_graphrag._llm import gpt_4o_mini_complete
+from nano_graphrag._llm import cheap_llm_complete
 from nano_graphrag._storage import HNSWVectorStorage
 from nano_graphrag.base import BaseKVStorage
 from nano_graphrag._utils import compute_args_hash, wrap_embedding_func_with_attrs
@@ -111,8 +111,8 @@ def query():
         cheap_model_max_token_size=8196,
         best_model_max_async=4,
         cheap_model_max_async=4,
-        best_model_func=gpt_4o_mini_complete,
-        cheap_model_func=gpt_4o_mini_complete,
+        best_model_func=cheap_llm_complete,
+        cheap_model_func=cheap_llm_complete,
         embedding_func=local_embedding,
         entity_extraction_func=extract_entities_dspy
         

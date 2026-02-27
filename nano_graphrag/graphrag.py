@@ -10,12 +10,12 @@ from typing import Callable, Dict, List, Optional, Type, Union, cast
 from ._llm import (
     amazon_bedrock_embedding,
     create_amazon_bedrock_complete_function,
-    gpt_4o_complete,
-    gpt_4o_mini_complete,
+    best_llm_complete,
+    cheap_llm_complete,
     openai_embedding,
-    azure_gpt_4o_complete,
+    azure_best_llm_complete,
     azure_openai_embedding,
-    azure_gpt_4o_mini_complete,
+    azure_cheap_llm_complete,
 )
 from ._op import (
     chunking_by_token_size,
@@ -89,7 +89,7 @@ class GraphRAG:
     node_embedding_algorithm: str = "node2vec"
     node2vec_params: dict = field(
         default_factory=lambda: {
-            "dimensions": 1536,
+            "dimensions": 3072,
             "num_walks": 10,
             "walk_length": 40,
             "num_walks": 10,
@@ -115,10 +115,10 @@ class GraphRAG:
     using_amazon_bedrock: bool = False
     best_model_id: str = "us.anthropic.claude-3-sonnet-20240229-v1:0"
     cheap_model_id: str = "us.anthropic.claude-3-haiku-20240307-v1:0"
-    best_model_func: callable = gpt_4o_complete
+    best_model_func: callable = best_llm_complete
     best_model_max_token_size: int = 32768
     best_model_max_async: int = 16
-    cheap_model_func: callable = gpt_4o_mini_complete
+    cheap_model_func: callable = cheap_llm_complete
     cheap_model_max_token_size: int = 32768
     cheap_model_max_async: int = 16
 
@@ -148,10 +148,10 @@ class GraphRAG:
 
         if self.using_azure_openai:
             # If there's no OpenAI API key, use Azure OpenAI
-            if self.best_model_func == gpt_4o_complete:
-                self.best_model_func = azure_gpt_4o_complete
-            if self.cheap_model_func == gpt_4o_mini_complete:
-                self.cheap_model_func = azure_gpt_4o_mini_complete
+            if self.best_model_func == best_llm_complete:
+                self.best_model_func = azure_best_llm_complete
+            if self.cheap_model_func == cheap_llm_complete:
+                self.cheap_model_func = azure_cheap_llm_complete
             if self.embedding_func == openai_embedding:
                 self.embedding_func = azure_openai_embedding
             logger.info(

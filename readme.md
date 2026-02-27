@@ -272,7 +272,7 @@ GraphRAG(...,chunk_func=chunking_by_seperators,...)
 
 In `nano-graphrag`, we requires two types of LLM, a great one and a cheap one. The former is used to plan and respond, the latter is used to summary. By default, the great one is `gpt-4o` and the cheap one is `gpt-4o-mini`
 
-You can implement your own LLM function (refer to `_llm.gpt_4o_complete`):
+You can implement your own LLM function (refer to `_llm.best_llm_complete`):
 
 ```python
 async def my_llm_complete(

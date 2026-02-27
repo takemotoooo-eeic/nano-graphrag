@@ -31,7 +31,17 @@ def get_openai_async_client_instance():
 def get_azure_openai_async_client_instance():
     global global_azure_openai_async_client
     if global_azure_openai_async_client is None:
-        global_azure_openai_async_client = AsyncAzureOpenAI()
+        # Configure Azure OpenAI client using environment variables
+        # These are typically loaded from a .env file in user code.
+        azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+        azure_api_key = os.getenv("AZURE_OPENAI_API_KEY")
+        azure_api_version = os.getenv("AZURE_OPENAI_API_VERSION")
+
+        global_azure_openai_async_client = AsyncAzureOpenAI(
+            azure_endpoint=azure_endpoint,
+            api_key=azure_api_key,
+            api_version=azure_api_version,
+        )
     return global_azure_openai_async_client
 
 
@@ -151,7 +161,7 @@ def create_amazon_bedrock_complete_function(model_id: str) -> Callable:
     return bedrock_complete
 
 
-async def gpt_4o_complete(
+async def best_llm_complete(
     prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
     return await openai_complete_if_cache(
@@ -163,7 +173,7 @@ async def gpt_4o_complete(
     )
 
 
-async def gpt_4o_mini_complete(
+async def cheap_llm_complete(
     prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
     return await openai_complete_if_cache(
@@ -256,11 +266,12 @@ async def azure_openai_complete_if_cache(
     return response.choices[0].message.content
 
 
-async def azure_gpt_4o_complete(
+async def azure_best_llm_complete(
     prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
+    deployment_name = os.getenv("AZURE_BEST_LLM_DEPLOYMENT", "gpt-4o")
     return await azure_openai_complete_if_cache(
-        "gpt-4o",
+        deployment_name,
         prompt,
         system_prompt=system_prompt,
         history_messages=history_messages,
@@ -268,11 +279,12 @@ async def azure_gpt_4o_complete(
     )
 
 
-async def azure_gpt_4o_mini_complete(
+async def azure_cheap_llm_complete(
     prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
+    deployment_name = os.getenv("AZURE_CHEAP_LLM_DEPLOYMENT", "gpt-4o-mini")
     return await azure_openai_complete_if_cache(
-        "gpt-4o-mini",
+        deployment_name,
         prompt,
         system_prompt=system_prompt,
         history_messages=history_messages,
@@ -280,7 +292,7 @@ async def azure_gpt_4o_mini_complete(
     )
 
 
-@wrap_embedding_func_with_attrs(embedding_dim=1536, max_token_size=8192)
+@wrap_embedding_func_with_attrs(embedding_dim=3072, max_token_size=8192)
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=4, max=10),
@@ -288,7 +300,10 @@ async def azure_gpt_4o_mini_complete(
 )
 async def azure_openai_embedding(texts: list[str]) -> np.ndarray:
     azure_openai_client = get_azure_openai_async_client_instance()
+    embedding_deployment = os.getenv(
+        "AZURE_EMBEDDING_DEPLOYMENT", "text-embedding-3-small"
+    )
     response = await azure_openai_client.embeddings.create(
-        model="text-embedding-3-small", input=texts, encoding_format="float"
+        model=embedding_deployment, input=texts, encoding_format="float"
     )
     return np.array([dp.embedding for dp in response.data])
