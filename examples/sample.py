@@ -17,16 +17,14 @@ neo4j_config = {
 }
 
 graph_func = GraphRAG(
-    working_dir="./dickens",
+    working_dir="./test_pdf",
     using_azure_openai=True,
     vector_db_storage_cls=QdrantStorage,
     graph_storage_cls=Neo4jStorage,
     addon_params=neo4j_config,
 )
 
-
-with open("./book.txt") as f:
-    graph_func.insert(f.read())
+graph_func.insert("./files/kouhou00000.pdf")
 
 # Perform global graphrag search
 print(graph_func.query("What are the top themes in this story?"))
