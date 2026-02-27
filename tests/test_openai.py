@@ -37,13 +37,13 @@ def mock_azure_openai_client():
 
 
 @pytest.mark.asyncio
-async def test_openai_gpt4o(mock_openai_client):
+async def test_openai_best_llm(mock_openai_client):
     mock_response = AsyncMock()
     mock_response.choices = [Mock(message=Mock(content="1"))]
     messages = [{"role": "system", "content": "3"}, {"role": "user", "content": "2"}]
     mock_openai_client.chat.completions.create.return_value = mock_response
 
-    response = await _llm.gpt_4o_complete("2", system_prompt="3")
+    response = await _llm.best_llm_complete("2", system_prompt="3")
 
     mock_openai_client.chat.completions.create.assert_awaited_once_with(
         model="gpt-4o",
@@ -53,13 +53,13 @@ async def test_openai_gpt4o(mock_openai_client):
 
 
 @pytest.mark.asyncio
-async def test_openai_gpt4omini(mock_openai_client):
+async def test_openai_cheap_llm(mock_openai_client):
     mock_response = AsyncMock()
     mock_response.choices = [Mock(message=Mock(content="1"))]
     messages = [{"role": "system", "content": "3"}, {"role": "user", "content": "2"}]
     mock_openai_client.chat.completions.create.return_value = mock_response
 
-    response = await _llm.gpt_4o_mini_complete("2", system_prompt="3")
+    response = await _llm.cheap_llm_complete("2", system_prompt="3")
 
     mock_openai_client.chat.completions.create.assert_awaited_once_with(
         model="gpt-4o-mini",
@@ -69,13 +69,13 @@ async def test_openai_gpt4omini(mock_openai_client):
 
 
 @pytest.mark.asyncio
-async def test_azure_openai_gpt4o(mock_azure_openai_client):
+async def test_azure_openai_best_llm(mock_azure_openai_client):
     mock_response = AsyncMock()
     mock_response.choices = [Mock(message=Mock(content="1"))]
     messages = [{"role": "system", "content": "3"}, {"role": "user", "content": "2"}]
     mock_azure_openai_client.chat.completions.create.return_value = mock_response
 
-    response = await _llm.azure_gpt_4o_complete("2", system_prompt="3")
+    response = await _llm.azure_best_llm_complete("2", system_prompt="3")
 
     mock_azure_openai_client.chat.completions.create.assert_awaited_once_with(
         model="gpt-4o",
@@ -85,13 +85,13 @@ async def test_azure_openai_gpt4o(mock_azure_openai_client):
 
 
 @pytest.mark.asyncio
-async def test_azure_openai_gpt4omini(mock_azure_openai_client):
+async def test_azure_openai_cheap_llm(mock_azure_openai_client):
     mock_response = AsyncMock()
     mock_response.choices = [Mock(message=Mock(content="1"))]
     messages = [{"role": "system", "content": "3"}, {"role": "user", "content": "2"}]
     mock_azure_openai_client.chat.completions.create.return_value = mock_response
 
-    response = await _llm.azure_gpt_4o_mini_complete("2", system_prompt="3")
+    response = await _llm.azure_cheap_llm_complete("2", system_prompt="3")
 
     mock_azure_openai_client.chat.completions.create.assert_awaited_once_with(
         model="gpt-4o-mini",
