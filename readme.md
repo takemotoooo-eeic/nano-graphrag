@@ -105,6 +105,72 @@ print(graph_func.query("What are the top themes in this story?"))
 print(graph_func.query("What are the top themes in this story?", param=QueryParam(mode="local")))
 ```
 
+### Visualize vectors with Qdrant (example)
+
+If you want to **visualize the vector index** with a web UI, you can use [Qdrant](https://qdrant.tech/) as the vector database.
+
+1. **Start a Qdrant server (Docker)**
+
+```bash
+docker run -p 6333:6333 qdrant/qdrant
+```
+
+Then open `http://localhost:6333/dashboard` in your browser to see Qdrant Web UI.
+
+2. **Use the Qdrant example storage**
+
+Check the example `examples/using_qdrant_as_vectorDB.py` and change the client initialization in `QdrantStorage.__post_init__` to server mode:
+
+```python
+from qdrant_client import QdrantClient
+from qdrant_client.models import VectorParams, Distance, PointStruct
+
+@dataclass
+class QdrantStorage(BaseVectorStorage):
+    def __post_init__(self):
+        # Connect to running Qdrant server
+        self._client = QdrantClient(
+            host="localhost",
+            port=6333,
+            # api_key="..."  # if you secured your Qdrant instance
+        )
+
+        self._max_batch_size = self.global_config["embedding_batch_num"]
+
+        if not self._client.collection_exists(collection_name=self.namespace):
+            self._client.create_collection(
+                collection_name=self.namespace,
+                vectors_config=VectorParams(
+                    size=self.embedding_func.embedding_dim,
+                    distance=Distance.COSINE,
+                ),
+            )
+```
+
+3. **Use Qdrant from your code**
+
+For example, you can adapt the quick start sample to use Qdrant:
+
+```python
+from nano_graphrag import GraphRAG, QueryParam
+from examples.using_qdrant_as_vectorDB import QdrantStorage
+
+graph_func = GraphRAG(
+    working_dir="./dickens",
+    enable_llm_cache=True,
+    vector_db_storage_cls=QdrantStorage,
+)
+
+with open("./book.txt") as f:
+    graph_func.insert(f.read())
+
+print(graph_func.query("What are the top themes in this story?"))
+print(graph_func.query("What are the top themes in this story?", param=QueryParam(mode="local")))
+```
+
+After running the script, you can inspect the created collection and vectors in the Qdrant Web UI (`http://localhost:6333/dashboard`).
+
+
 Next time you initialize a `GraphRAG` from the same `working_dir`, it will reload all the contexts automatically.
 
 #### Batch Insert

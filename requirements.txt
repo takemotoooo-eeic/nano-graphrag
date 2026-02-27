@@ -11,3 +11,4 @@ dspy-ai
 neo4j
 aioboto3
 dotenv
+qdrant_client
