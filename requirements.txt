@@ -17,3 +17,5 @@ pypdf
 openpyxl
 azure-ai-formrecognizer
 azure-ai-documentintelligence
+pdf2image
+google-generativeai

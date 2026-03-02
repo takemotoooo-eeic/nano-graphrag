@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 
 from nano_graphrag import GraphRAG, QueryParam
 from nano_graphrag._storage import Neo4jStorage, QdrantStorage
+from nano_graphrag._parser.mm_pdf_parser import MultimodalPdfParser
 
 
 load_dotenv()
@@ -24,7 +25,10 @@ graph_func = GraphRAG(
     addon_params=neo4j_config,
 )
 
-graph_func.insert("./files/kouhou00000.pdf")
+graph_func.insert(
+    "./files/public_document_ministry00005.pdf",
+    parsers=[MultimodalPdfParser()],
+)
 
 # Perform global graphrag search
 print(graph_func.query("What are the top themes in this story?"))
