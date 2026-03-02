@@ -19,3 +19,9 @@ azure-ai-formrecognizer
 azure-ai-documentintelligence
 pdf2image
 google-generativeai
+numpy
+pydantic
+langchain-core
+rouge-score
+json5
+json-repair
