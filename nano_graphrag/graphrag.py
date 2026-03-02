@@ -3,7 +3,7 @@ import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from functools import partial
-from typing import Callable, Dict, List, Optional, Type, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Type, Union, cast
 
 
 
@@ -49,6 +49,18 @@ from .base import (
     QueryParam,
     BaseParser,
 )
+
+
+def _wrap_embedding_with_tracker(embedding_func: EmbeddingFunc, tracker: Any) -> EmbeddingFunc:
+    """embedding 呼び出し時に tracker を kwargs で渡すラッパー。"""
+    async def wrapped(*args: Any, **kwargs: Any) -> Any:
+        kwargs["tracker"] = tracker
+        return await embedding_func(*args, **kwargs)
+    return EmbeddingFunc(
+        embedding_dim=embedding_func.embedding_dim,
+        max_token_size=embedding_func.max_token_size,
+        func=wrapped,
+    )
 
 
 @dataclass
@@ -115,6 +127,7 @@ class GraphRAG:
     # LLM
     using_azure_openai: bool = False
     using_amazon_bedrock: bool = False
+    using_langchain_langfuse: bool = False  # True で LangChain + Langfuse でモニタリング
     best_model_id: str = "us.anthropic.claude-3-sonnet-20240229-v1:0"
     cheap_model_id: str = "us.anthropic.claude-3-haiku-20240307-v1:0"
     best_model_func: callable = best_llm_complete
@@ -138,6 +151,10 @@ class GraphRAG:
     always_create_working_dir: bool = True
     addon_params: dict = field(default_factory=dict)
     convert_response_to_json_func: callable = convert_response_to_json
+
+    # optional trackers (TokenTracker / TimeTracker from nano_graphrag.tracker)
+    token_tracker: Optional[Any] = None
+    time_tracker: Optional[Any] = None
 
     def __post_init__(self):
         _print_config = ",\n  ".join([f"{k} = {v}" for k, v in asdict(self).items()])
@@ -168,9 +185,38 @@ class GraphRAG:
                 "Switched the default openai funcs to Amazon Bedrock"
             )
 
+        if self.using_langchain_langfuse:
+            try:
+                from ._llm_langchain import (
+                    get_langchain_langfuse_complete_factories,
+                    get_langchain_langfuse_embedding,
+                )
+                use_azure = self.using_azure_openai
+                best_fn, cheap_fn = get_langchain_langfuse_complete_factories(use_azure=use_azure)
+                if self.best_model_func in (best_llm_complete, azure_best_llm_complete):
+                    self.best_model_func = best_fn
+                if self.cheap_model_func in (cheap_llm_complete, azure_cheap_llm_complete):
+                    self.cheap_model_func = cheap_fn
+                if self.embedding_func in (openai_embedding, azure_openai_embedding):
+                    self.embedding_func = get_langchain_langfuse_embedding(use_azure=use_azure)
+                logger.info(
+                    "Switched the default openai funcs to LangChain + Langfuse (LLM requests will be traced)"
+                )
+            except ImportError as e:
+                logger.warning(
+                    "using_langchain_langfuse=True but LangChain/Langfuse not available: %s. "
+                    "Install with: pip install langchain-openai langfuse",
+                    e,
+                )
+
         if not os.path.exists(self.working_dir) and self.always_create_working_dir:
             logger.info(f"Creating working directory {self.working_dir}")
             os.makedirs(self.working_dir)
+
+        if self.token_tracker is not None:
+            self.embedding_func = _wrap_embedding_with_tracker(
+                self.embedding_func, self.token_tracker
+            )
 
         self.full_docs = self.key_string_value_json_storage_cls(
             namespace="full_docs", global_config=asdict(self)
@@ -218,11 +264,16 @@ class GraphRAG:
             else None
         )
 
+        _best_kw = {"hashing_kv": self.llm_response_cache}
+        _cheap_kw = {"hashing_kv": self.llm_response_cache}
+        if self.token_tracker is not None:
+            _best_kw["tracker"] = self.token_tracker
+            _cheap_kw["tracker"] = self.token_tracker
         self.best_model_func = limit_async_func_call(self.best_model_max_async)(
-            partial(self.best_model_func, hashing_kv=self.llm_response_cache)
+            partial(self.best_model_func, **_best_kw)
         )
         self.cheap_model_func = limit_async_func_call(self.cheap_model_max_async)(
-            partial(self.cheap_model_func, hashing_kv=self.llm_response_cache)
+            partial(self.cheap_model_func, **_cheap_kw)
         )
 
 
@@ -240,6 +291,15 @@ class GraphRAG:
         return loop.run_until_complete(self.aquery(query, param))
 
     async def aquery(self, query: str, param: QueryParam = QueryParam()):
+        if self.time_tracker is not None:
+            self.time_tracker.start("query")
+        try:
+            return await self._aquery_impl(query, param)
+        finally:
+            if self.time_tracker is not None:
+                self.time_tracker.stop("query")
+
+    async def _aquery_impl(self, query: str, param: QueryParam):
         if param.mode == "local" and not self.enable_local:
             raise ValueError("enable_local is False, cannot query in local mode")
         if param.mode == "naive" and not self.enable_naive_rag:
@@ -319,6 +379,8 @@ class GraphRAG:
         string_or_strings,
         parsers: Optional[List[BaseParser]] = None,
     ):
+        if self.time_tracker is not None:
+            self.time_tracker.start("insert")
         await self._insert_start()
         try:
             texts = self._normalize_inputs_to_texts(string_or_strings, parsers=parsers)
@@ -389,6 +451,8 @@ class GraphRAG:
             await self.text_chunks.upsert(inserting_chunks)
         finally:
             await self._insert_done()
+            if self.time_tracker is not None:
+                self.time_tracker.stop("insert")
 
     async def _insert_start(self):
         tasks = []

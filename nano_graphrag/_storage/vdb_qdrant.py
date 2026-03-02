@@ -20,6 +20,8 @@ class QdrantStorage(BaseVectorStorage):
         self._client = QdrantClient(host="localhost", port=6333)
 
         self._max_batch_size = self.global_config["embedding_batch_num"]
+        # Qdrant のペイロード制限（約33MB）を避けるため upsert を分割するサイズ
+        self._upsert_batch_size = self.global_config.get("qdrant_upsert_batch_size", 200)
 
         if not self._client.collection_exists(collection_name=self.namespace):
             self._client.create_collection(
@@ -59,13 +61,20 @@ class QdrantStorage(BaseVectorStorage):
             PointStruct(
                 id=uuid.uuid4().hex,
                 vector=embeddings[i].tolist(),
-                payload=data,
+                payload=item,
             )
-            for i, data in enumerate(list_data)
+            for i, item in enumerate(list_data)
         ]
 
-        results = self._client.upsert(collection_name=self.namespace, points=points)
-        return results
+        # Qdrant のペイロード制限（デフォルト 33MB）を超えないようバッチで upsert
+        all_results = []
+        for i in range(0, len(points), self._upsert_batch_size):
+            batch = points[i : i + self._upsert_batch_size]
+            results = self._client.upsert(
+                collection_name=self.namespace, points=batch, wait=True
+            )
+            all_results.append(results)
+        return all_results
 
     async def query(self, query, top_k=5):
         embedding = await self.embedding_func([query])

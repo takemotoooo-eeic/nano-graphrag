@@ -605,16 +605,22 @@ def _community_report_json_to_str(parsed_output: dict) -> str:
     title = parsed_output.get("title", "Report")
     summary = parsed_output.get("summary", "")
     findings = parsed_output.get("findings", [])
+    # LLM が dict/str 以外（int 等）を返す場合があるため、扱える要素だけに限定
+    findings = [f for f in findings if isinstance(f, (dict, str))]
 
-    def finding_summary(finding: dict):
+    def finding_summary(finding):
         if isinstance(finding, str):
             return finding
-        return finding.get("summary")
+        if isinstance(finding, dict):
+            return finding.get("summary", "")
+        return str(finding)
 
-    def finding_explanation(finding: dict):
+    def finding_explanation(finding):
         if isinstance(finding, str):
             return ""
-        return finding.get("explanation")
+        if isinstance(finding, dict):
+            return finding.get("explanation", "")
+        return ""
 
     report_sections = "\n\n".join(
         f"## {finding_summary(f)}\n\n{finding_explanation(f)}" for f in findings
@@ -941,7 +947,7 @@ async def local_query(
     query_param: QueryParam,
     tokenizer_wrapper,
     global_config: dict,
-) -> str:
+) -> tuple[str, str]:
     use_model_func = global_config["best_model_func"]
     context = await _build_local_query_context(
         query,
@@ -953,9 +959,9 @@ async def local_query(
         tokenizer_wrapper,
     )
     if query_param.only_need_context:
-        return context
+        return "", context
     if context is None:
-        return PROMPTS["fail_response"]
+        return PROMPTS["fail_response"], ""
     sys_prompt_temp = PROMPTS["local_rag_response"]
     sys_prompt = sys_prompt_temp.format(
         context_data=context, response_type=query_param.response_type
@@ -964,7 +970,7 @@ async def local_query(
         query,
         system_prompt=sys_prompt,
     )
-    return response
+    return response, context
 
 
 async def _map_global_communities(
@@ -1023,13 +1029,13 @@ async def global_query(
     query_param: QueryParam,
     tokenizer_wrapper,
     global_config: dict,
-) -> str:
+) -> tuple[str, str]:
     community_schema = await knowledge_graph_inst.community_schema()
     community_schema = {
         k: v for k, v in community_schema.items() if v["level"] <= query_param.level
     }
     if not len(community_schema):
-        return PROMPTS["fail_response"]
+        return PROMPTS["fail_response"], ""
     use_model_func = global_config["best_model_func"]
 
     sorted_community_schemas = sorted(
@@ -1073,7 +1079,7 @@ async def global_query(
             )
     final_support_points = [p for p in final_support_points if p["score"] > 0]
     if not len(final_support_points):
-        return PROMPTS["fail_response"]
+        return PROMPTS["fail_response"], ""
     final_support_points = sorted(
         final_support_points, key=lambda x: x["score"], reverse=True
     )
@@ -1093,7 +1099,7 @@ Importance Score: {dp['score']}
         )
     points_context = "\n".join(points_context)
     if query_param.only_need_context:
-        return points_context
+        return "", points_context
     sys_prompt_temp = PROMPTS["global_reduce_rag_response"]
     response = await use_model_func(
         query,
@@ -1101,7 +1107,7 @@ Importance Score: {dp['score']}
             report_data=points_context, response_type=query_param.response_type
         ),
     )
-    return response
+    return response, points_context
 
 
 async def naive_query(
@@ -1111,11 +1117,11 @@ async def naive_query(
     query_param: QueryParam,
     tokenizer_wrapper,
     global_config: dict,
-):
+) -> tuple[str, str]:
     use_model_func = global_config["best_model_func"]
     results = await chunks_vdb.query(query, top_k=query_param.top_k)
     if not len(results):
-        return PROMPTS["fail_response"]
+        return PROMPTS["fail_response"], ""
     chunks_ids = [r["id"] for r in results]
     chunks = await text_chunks_db.get_by_ids(chunks_ids)
 
@@ -1128,7 +1134,7 @@ async def naive_query(
     logger.info(f"Truncate {len(chunks)} to {len(maybe_trun_chunks)} chunks")
     section = "--New Chunk--\n".join([c["content"] for c in maybe_trun_chunks])
     if query_param.only_need_context:
-        return section
+        return "", section
     sys_prompt_temp = PROMPTS["naive_rag_response"]
     sys_prompt = sys_prompt_temp.format(
         content_data=section, response_type=query_param.response_type
@@ -1137,4 +1143,4 @@ async def naive_query(
         query,
         system_prompt=sys_prompt,
     )
-    return response
+    return response, section

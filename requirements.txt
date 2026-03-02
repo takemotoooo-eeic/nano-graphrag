@@ -23,5 +23,8 @@ numpy
 pydantic
 langchain-core
 rouge-score
+langchain-openai
+langfuse
 json5
 json-repair
+datasets

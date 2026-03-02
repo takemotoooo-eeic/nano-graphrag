@@ -57,11 +57,27 @@ def get_amazon_bedrock_async_client_instance():
     wait=wait_exponential(multiplier=1, min=4, max=10),
     retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
 )
+def _add_usage_to_tracker(tracker, response) -> None:
+    """OpenAI/Azure の response.usage を tracker に加算する。"""
+    if tracker is None:
+        return
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return
+    pt = getattr(usage, "prompt_tokens", 0) or 0
+    ct = getattr(usage, "completion_tokens", 0) or 0
+    tt = getattr(usage, "total_tokens", None)
+    if tt is None:
+        tt = pt + ct
+    tracker.add_usage({"prompt_tokens": pt, "completion_tokens": ct, "total_tokens": tt})
+
+
 async def openai_complete_if_cache(
     model, prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
     openai_async_client = get_openai_async_client_instance()
     hashing_kv: BaseKVStorage = kwargs.pop("hashing_kv", None)
+    tracker = kwargs.pop("tracker", None)
     messages = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
@@ -76,6 +92,7 @@ async def openai_complete_if_cache(
     response = await openai_async_client.chat.completions.create(
         model=model, messages=messages, **kwargs
     )
+    _add_usage_to_tracker(tracker, response)
 
     if hashing_kv is not None:
         await hashing_kv.upsert(
@@ -220,11 +237,17 @@ async def amazon_bedrock_embedding(texts: list[str]) -> np.ndarray:
     wait=wait_exponential(multiplier=1, min=4, max=10),
     retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
 )
-async def openai_embedding(texts: list[str]) -> np.ndarray:
+async def openai_embedding(texts: list[str], **kwargs) -> np.ndarray:
     openai_async_client = get_openai_async_client_instance()
+    tracker = kwargs.pop("tracker", None)
     response = await openai_async_client.embeddings.create(
         model="text-embedding-3-small", input=texts, encoding_format="float"
     )
+    if tracker is not None and getattr(response, "usage", None) is not None:
+        u = response.usage
+        total = getattr(u, "total_tokens", None) or (getattr(u, "input_tokens", 0) + getattr(u, "output_tokens", 0))
+        if total is not None:
+            tracker.add_usage({"prompt_tokens": total, "completion_tokens": 0, "total_tokens": total})
     return np.array([dp.embedding for dp in response.data])
 
 
@@ -238,6 +261,7 @@ async def azure_openai_complete_if_cache(
 ) -> str:
     azure_openai_client = get_azure_openai_async_client_instance()
     hashing_kv: BaseKVStorage = kwargs.pop("hashing_kv", None)
+    tracker = kwargs.pop("tracker", None)
     messages = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
@@ -252,6 +276,7 @@ async def azure_openai_complete_if_cache(
     response = await azure_openai_client.chat.completions.create(
         model=deployment_name, messages=messages, **kwargs
     )
+    _add_usage_to_tracker(tracker, response)
 
     if hashing_kv is not None:
         await hashing_kv.upsert(
@@ -298,12 +323,18 @@ async def azure_cheap_llm_complete(
     wait=wait_exponential(multiplier=1, min=4, max=10),
     retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
 )
-async def azure_openai_embedding(texts: list[str]) -> np.ndarray:
+async def azure_openai_embedding(texts: list[str], **kwargs) -> np.ndarray:
     azure_openai_client = get_azure_openai_async_client_instance()
+    tracker = kwargs.pop("tracker", None)
     embedding_deployment = os.getenv(
         "AZURE_EMBEDDING_DEPLOYMENT", "text-embedding-3-small"
     )
     response = await azure_openai_client.embeddings.create(
         model=embedding_deployment, input=texts, encoding_format="float"
     )
+    if tracker is not None and getattr(response, "usage", None) is not None:
+        u = response.usage
+        total = getattr(u, "total_tokens", None) or (getattr(u, "input_tokens", 0) + getattr(u, "output_tokens", 0))
+        if total is not None:
+            tracker.add_usage({"prompt_tokens": total, "completion_tokens": 0, "total_tokens": total})
     return np.array([dp.embedding for dp in response.data])

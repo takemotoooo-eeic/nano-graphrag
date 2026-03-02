@@ -510,6 +510,12 @@ class Neo4jStorage(BaseGraphStorage):
         return dict(results)
 
     async def index_done_callback(self):
+        # インデックス完了後も query() で同じストレージを使うためドライバは閉じない。
+        # 必要なら呼び出し側で明示的に close するか、GraphRAG 破棄時に閉じる実装を検討。
+        pass
+
+    async def close(self):
+        """Neo4j ドライバを閉じる。同一 GraphRAG で insert 後に query する場合は呼ばないこと。"""
         await self.async_driver.close()
 
     async def _debug_delete_all_node_edges(self):
